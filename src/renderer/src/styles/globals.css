@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --theme-grad-1: #fce7f3;
+  --theme-grad-2: #fbcfe8;
+  --theme-grad-3: #f5d0fe;
+  --theme-accent: #f9a8d4;
+  --theme-accent-hover: #f472b6;
+  --theme-soft: #fce7f3;
+  --theme-on-accent: #3d2e5c;
+  --theme-accent-rgb: 249 168 212;
+  --theme-soft-rgb: 252 231 243;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  background: linear-gradient(
+    135deg,
+    var(--theme-grad-1) 0%,
+    var(--theme-grad-2) 50%,
+    var(--theme-grad-3) 100%
+  );
+  background-attachment: fixed;
+  @apply text-ink-100;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  transition: background 400ms ease;
+}
+
+.scrollbar-thin::-webkit-scrollbar { height: 8px; width: 8px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { @apply bg-pastel-purple/50 rounded; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium
+           bg-white/70 hover:bg-white border border-pastel-purple/40 text-ink-100
+           shadow-sm transition-colors;
+  }
+  .btn-primary {
+    @apply bg-pastel-purple hover:bg-indigo-500 border-pastel-purple text-ink-50;
+  }
+  .btn-danger {
+    @apply bg-pastel-pink hover:bg-rose-400 border-pastel-pink text-ink-50;
+  }
+  .input {
+    @apply w-full rounded-lg bg-white/80 border border-pastel-purple/40 px-3 py-1.5 text-sm
+           text-ink-100 placeholder-ink-400
+           focus:outline-none focus:ring-2 focus:ring-pastel-purple focus:border-transparent;
+  }
+  .card {
+    @apply rounded-2xl bg-white/80 backdrop-blur border border-pastel-purple/30 p-3 shadow-sm;
+  }
+}

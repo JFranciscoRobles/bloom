@@ -1,0 +1,55 @@
+name: Build Windows installer
+
+on:
+  # Manual trigger from the Actions tab
+  workflow_dispatch:
+  # Auto-build when you push a tag like v0.1.0
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rebuild native modules for Electron (better-sqlite3)
+        run: npm run rebuild
+
+      - name: Build Windows installer
+        run: npm run build:win
+        env:
+          # electron-builder writes here; nothing to publish, just build
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload installer as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bloom-windows-installer
+          path: |
+            dist/*.exe
+            dist/*.exe.blockmap
+          if-no-files-found: error
+
+      - name: Attach installer to GitHub Release (only on tag push)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.exe
+            dist/*.exe.blockmap
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
