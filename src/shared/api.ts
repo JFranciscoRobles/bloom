@@ -8,6 +8,7 @@ import type {
   ExchangeRate,
   GanttCard,
   MonthlySummary,
+  SearchResult,
   Tag,
   Transaction,
   TxType
@@ -73,6 +74,9 @@ export interface DashboardAPI {
     upsert: (rate: ExchangeRate) => Promise<void>
     remove: (from: string, to: string) => Promise<void>
   }
+  search: {
+    all: (q: string, limit?: number) => Promise<SearchResult[]>
+  }
   exports: {
     backupDb: () => Promise<{ ok: boolean; path?: string; error?: string }>
     excel: () => Promise<{ ok: boolean; path?: string; error?: string }>
@@ -80,5 +84,15 @@ export interface DashboardAPI {
   imports: {
     db: () => Promise<{ ok: boolean; path?: string; error?: string }>
     excel: () => Promise<{ ok: boolean; path?: string; error?: string }>
+  }
+  clipboard: {
+    readText: () => string
+  }
+  inbox: {
+    capture: (title: string, description?: string | null) => Promise<Card>
+  }
+  menu: {
+    /** Subscribe to native-menu actions. Returns an unsubscribe fn. */
+    onAction: (cb: (action: string) => void) => () => void
   }
 }

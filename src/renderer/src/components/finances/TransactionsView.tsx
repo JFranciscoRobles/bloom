@@ -1,15 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import dayjs from 'dayjs'
-import { PlusIcon, Trash2Icon } from 'lucide-react'
+import { PlusIcon, Trash2Icon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import type { Account, Category, Transaction, TxType } from '../../../../shared/types'
 import { formatMoney } from '../../lib/currency'
 import { useCurrencies } from '../../hooks/useCurrencies'
+import { useNavStore } from '../../lib/navStore'
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const
 
 export default function TransactionsView(): JSX.Element {
   const [accounts, setAccounts] = useState<Account[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const { currencies } = useCurrencies()
+  const pendingTransactionId = useNavStore((s) => s.pendingTransactionId)
+  const consumePendingTransaction = useNavStore((s) => s.consumePendingTransaction)
+  const [highlightedId, setHighlightedId] = useState<number | null>(null)
+  const [pageSize, setPageSize] = useState<number>(25)
+  const [page, setPage] = useState(1)
 
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({
@@ -40,6 +48,34 @@ export default function TransactionsView(): JSX.Element {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (pendingTransactionId == null || transactions.length === 0) return
+    const idx = transactions.findIndex((t) => t.id === pendingTransactionId)
+    if (idx < 0) return
+    const targetPage = Math.floor(idx / pageSize) + 1
+    setPage(targetPage)
+    setHighlightedId(pendingTransactionId)
+    consumePendingTransaction()
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(`[data-tx-id="${pendingTransactionId}"]`)
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+    const t = setTimeout(() => setHighlightedId(null), 2500)
+    return () => clearTimeout(t)
+  }, [pendingTransactionId, transactions, pageSize, consumePendingTransaction])
+
+  // Reset page to 1 when the underlying list shrinks below the current page,
+  // or when page size changes.
+  const totalPages = Math.max(1, Math.ceil(transactions.length / pageSize))
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [page, totalPages])
+
+  const pagedTransactions = useMemo(() => {
+    const start = (page - 1) * pageSize
+    return transactions.slice(start, start + pageSize)
+  }, [transactions, page, pageSize])
 
   function handleAccountChange(id: number): void {
     const a = accounts.find((x) => x.id === id)
@@ -184,75 +220,142 @@ export default function TransactionsView(): JSX.Element {
         </div>
       )}
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="text-xs text-ink-400 uppercase">
-            <tr className="border-b border-pastel-purple/30">
-              <th className="text-left p-2">Fecha</th>
-              <th className="text-left p-2">Tipo</th>
-              <th className="text-left p-2">Cuenta</th>
-              <th className="text-left p-2">Categoría</th>
-              <th className="text-right p-2">Monto</th>
-              <th className="text-left p-2">Nota</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {transactions.map((t) => {
-              const acc = accountById.get(t.account_id)
-              const cat = t.category_id ? catById.get(t.category_id) : null
-              return (
-                <tr key={t.id} className="border-b border-pastel-purple/20 hover:bg-pastel-purple/10">
-                  <td className="p-2">{dayjs(t.date).format('DD/MM/YYYY')}</td>
-                  <td className="p-2">
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-xs text-ink-50 ${
-                        t.type === 'income' ? 'bg-pastel-mint' : 'bg-pastel-pink'
+      <div className="rounded-2xl bg-white border border-pastel-purple/40 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-[11px] text-ink-300 uppercase tracking-wide bg-pastel-purple/15 border-b border-pastel-purple/40">
+              <tr>
+                <th className="text-left px-3 py-2 font-semibold">Fecha</th>
+                <th className="text-left px-3 py-2 font-semibold">Tipo</th>
+                <th className="text-left px-3 py-2 font-semibold">Cuenta</th>
+                <th className="text-left px-3 py-2 font-semibold">Categoría</th>
+                <th className="text-right px-3 py-2 font-semibold">Monto</th>
+                <th className="text-left px-3 py-2 font-semibold">Nota</th>
+                <th className="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-pastel-purple/15">
+              {pagedTransactions.map((t, i) => {
+                const acc = accountById.get(t.account_id)
+                const cat = t.category_id ? catById.get(t.category_id) : null
+                return (
+                  <tr
+                    key={t.id}
+                    data-tx-id={t.id}
+                    className={`transition-colors ${
+                      highlightedId === t.id
+                        ? 'bg-pastel-purple/25'
+                        : i % 2 === 0
+                          ? 'bg-white'
+                          : 'bg-pastel-purple/5'
+                    } hover:bg-pastel-purple/15`}
+                  >
+                    <td className="px-3 py-2 whitespace-nowrap text-ink-200">
+                      {dayjs(t.date).format('DD/MM/YYYY')}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-xs text-ink-50 ${
+                          t.type === 'income' ? 'bg-pastel-mint' : 'bg-pastel-pink'
+                        }`}
+                      >
+                        {t.type === 'income' ? 'Ingreso' : 'Gasto'}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-ink-200">{acc?.name ?? '?'}</td>
+                    <td className="px-3 py-2">
+                      {cat ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <span
+                            className="w-2 h-2 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: cat.color }}
+                          />
+                          <span className="text-ink-200">{cat.name}</span>
+                        </span>
+                      ) : (
+                        <span className="text-ink-500">—</span>
+                      )}
+                    </td>
+                    <td
+                      className={`px-3 py-2 text-right font-mono whitespace-nowrap ${
+                        t.type === 'income' ? 'text-emerald-400' : 'text-rose-400'
                       }`}
                     >
-                      {t.type === 'income' ? 'Ingreso' : 'Gasto'}
-                    </span>
-                  </td>
-                  <td className="p-2">{acc?.name ?? '?'}</td>
-                  <td className="p-2">
-                    {cat ? (
-                      <span className="inline-flex items-center gap-1">
-                        <span
-                          className="w-2 h-2 rounded-full"
-                          style={{ backgroundColor: cat.color }}
-                        />
-                        {cat.name}
-                      </span>
-                    ) : (
-                      <span className="text-ink-500">—</span>
-                    )}
-                  </td>
-                  <td
-                    className={`p-2 text-right font-mono ${
-                      t.type === 'income' ? 'text-emerald-400' : 'text-rose-400'
-                    }`}
-                  >
-                    {t.type === 'income' ? '+' : '-'}
-                    {formatMoney(t.amount, t.currency)}
-                  </td>
-                  <td className="p-2 text-ink-300">{t.note}</td>
-                  <td className="p-2 text-right">
-                    <button onClick={() => handleRemove(t)} className="btn btn-danger">
-                      <Trash2Icon size={12} />
-                    </button>
+                      {t.type === 'income' ? '+' : '−'}
+                      {formatMoney(t.amount, t.currency)}
+                    </td>
+                    <td className="px-3 py-2 text-ink-300 max-w-[280px] truncate">
+                      {t.note}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        onClick={() => handleRemove(t)}
+                        className="p-1 rounded-full hover:bg-pastel-pink/40 text-ink-400 hover:text-rose-400 transition-colors"
+                        title="Borrar"
+                      >
+                        <Trash2Icon size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+              {transactions.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-3 py-10 text-center text-ink-400">
+                    Sin transacciones todavía.
                   </td>
                 </tr>
-              )
-            })}
-            {transactions.length === 0 && (
-              <tr>
-                <td colSpan={7} className="p-6 text-center text-ink-400">
-                  Sin transacciones todavía.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {transactions.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-t border-pastel-purple/30 bg-pastel-purple/5 text-xs text-ink-300">
+            <div className="flex items-center gap-2">
+              <span>Filas por página:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value))
+                  setPage(1)
+                }}
+                className="bg-white border border-pastel-purple/40 rounded-md px-2 py-1 text-xs text-ink-100 focus:outline-none focus:ring-2 focus:ring-pastel-purple"
+              >
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="text-ink-400">
+              {(page - 1) * pageSize + 1}–
+              {Math.min(page * pageSize, transactions.length)} de {transactions.length}
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                className="p-1 rounded-md hover:bg-pastel-purple/15 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Anterior"
+              >
+                <ChevronLeftIcon size={16} />
+              </button>
+              <span className="px-2 tabular-nums">
+                {page} / {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages}
+                className="p-1 rounded-md hover:bg-pastel-purple/15 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Siguiente"
+              >
+                <ChevronRightIcon size={16} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

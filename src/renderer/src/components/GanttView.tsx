@@ -11,14 +11,16 @@ interface Props {
 }
 
 const ROW_HEIGHT = 36
-const HEADER_HEIGHT = 56
+const HEADER_TOP = 28
+const HEADER_BOTTOM = 28
+const HEADER_HEIGHT = HEADER_TOP + HEADER_BOTTOM
 const SIDEBAR_WIDTH = 260
 const GROUP_HEADER_HEIGHT = 28
 
 const ZOOM_PX: Record<Zoom, number> = {
   day: 36,
-  week: 14,
-  month: 6
+  week: 18,
+  month: 10
 }
 
 interface Drag {
@@ -181,34 +183,89 @@ export default function GanttView({ boardId }: Props): JSX.Element {
     setDragPreview({ start, end })
   }
 
-  // Generate header ticks
-  const ticks = useMemo(() => {
-    const out: Array<{ x: number; label: string; major: boolean }> = []
+  // Header has two rows: a coarse one (year/month) and a fine one
+  // (month-day/week-start). We also expose week starts and weekend day spans
+  // so the body can draw richer grid lines and shaded weekends.
+  interface HeaderTick {
+    x: number
+    width: number
+    label: string
+    isCurrent: boolean
+  }
+  const header = useMemo<{
+    top: HeaderTick[]
+    bottom: HeaderTick[]
+    weekStarts: number[]
+    weekendSpans: Array<{ x: number; width: number }>
+  }>(() => {
+    const top: HeaderTick[] = []
+    const bottom: HeaderTick[] = []
+    const weekStarts: number[] = []
+    const weekendSpans: Array<{ x: number; width: number }> = []
+    const today = dayjs().startOf('day')
+
+    // Top row: months (always)
+    let m = range.start.startOf('month')
+    while (m.isBefore(range.end)) {
+      const next = m.add(1, 'month')
+      const startX = dateToX(m.isBefore(range.start) ? range.start : m)
+      const endX = dateToX(next.isAfter(range.end) ? range.end.add(1, 'day') : next)
+      top.push({
+        x: startX,
+        width: Math.max(0, endX - startX),
+        label: m.format('MMMM YYYY'),
+        isCurrent: m.month() === today.month() && m.year() === today.year()
+      })
+      m = next
+    }
+
+    // Bottom row + weekend spans
     if (zoom === 'day') {
       let d = range.start
       while (d.isBefore(range.end) || d.isSame(range.end)) {
-        const isMonthStart = d.date() === 1
-        out.push({
+        bottom.push({
           x: dateToX(d),
-          label: isMonthStart ? d.format('MMM YYYY') : String(d.date()),
-          major: isMonthStart
+          width: dayPx,
+          label: String(d.date()),
+          isCurrent: d.isSame(today, 'day')
         })
+        const dow = d.day()
+        if (dow === 0 || dow === 6) {
+          weekendSpans.push({ x: dateToX(d), width: dayPx })
+        }
+        if (d.day() === 1) weekStarts.push(dateToX(d))
         d = d.add(1, 'day')
       }
     } else if (zoom === 'week') {
       let d = range.start.startOf('week')
       while (d.isBefore(range.end)) {
-        out.push({ x: dateToX(d), label: d.format('DD MMM'), major: d.date() <= 7 })
-        d = d.add(1, 'week')
+        const next = d.add(1, 'week')
+        bottom.push({
+          x: dateToX(d),
+          width: 7 * dayPx,
+          label: d.format('D MMM'),
+          isCurrent: today.isSame(d, 'week')
+        })
+        weekStarts.push(dateToX(d))
+        d = next
       }
     } else {
-      let d = range.start.startOf('month')
+      // month zoom: bottom row shows week numbers (start of each week)
+      let d = range.start.startOf('week')
       while (d.isBefore(range.end)) {
-        out.push({ x: dateToX(d), label: d.format('MMM YY'), major: d.month() === 0 })
-        d = d.add(1, 'month')
+        const next = d.add(1, 'week')
+        bottom.push({
+          x: dateToX(d),
+          width: 7 * dayPx,
+          label: d.format('D'),
+          isCurrent: today.isSame(d, 'week')
+        })
+        weekStarts.push(dateToX(d))
+        d = next
       }
     }
-    return out
+
+    return { top, bottom, weekStarts, weekendSpans }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, zoom, dayPx])
 
@@ -348,26 +405,53 @@ export default function GanttView({ boardId }: Props): JSX.Element {
               className="relative"
               style={{ width: timelineWidth, minWidth: '100%' }}
             >
-              {/* Header */}
+              {/* Header (two rows: coarse months on top, fine days/weeks below) */}
               <div
-                className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-pastel-purple/30"
+                className="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-pastel-purple/40"
                 style={{ height: HEADER_HEIGHT }}
               >
                 <div className="relative h-full">
-                  {ticks.map((t, i) => (
-                    <div
-                      key={i}
-                      className={`absolute top-0 h-full flex items-end pb-1 text-xs ${
-                        t.major ? 'text-ink-100 font-semibold' : 'text-ink-400'
-                      }`}
-                      style={{ left: t.x, width: dayPx }}
-                    >
-                      <span className="px-1 truncate">{t.label}</span>
-                    </div>
-                  ))}
+                  {/* Top row: months */}
+                  <div
+                    className="absolute left-0 right-0 border-b border-pastel-purple/30"
+                    style={{ top: 0, height: HEADER_TOP }}
+                  >
+                    {header.top.map((t, i) => (
+                      <div
+                        key={i}
+                        className={`absolute top-0 h-full flex items-center justify-center text-xs font-semibold tracking-wide capitalize border-r border-pastel-purple/20 ${
+                          t.isCurrent
+                            ? 'text-ink-50 bg-pastel-purple/20'
+                            : 'text-ink-200'
+                        }`}
+                        style={{ left: t.x, width: t.width }}
+                      >
+                        <span className="px-2 truncate">{t.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Bottom row: days / weeks */}
+                  <div
+                    className="absolute left-0 right-0"
+                    style={{ top: HEADER_TOP, height: HEADER_BOTTOM }}
+                  >
+                    {header.bottom.map((t, i) => (
+                      <div
+                        key={i}
+                        className={`absolute top-0 h-full flex items-center justify-center text-[10px] ${
+                          t.isCurrent
+                            ? 'text-ink-50 font-semibold bg-pastel-pink/30 rounded'
+                            : 'text-ink-400'
+                        }`}
+                        style={{ left: t.x, width: t.width }}
+                      >
+                        <span className="px-0.5 truncate">{t.label}</span>
+                      </div>
+                    ))}
+                  </div>
                   {/* today line marker in header */}
                   <div
-                    className="absolute top-0 bottom-0 w-px bg-pastel-pink"
+                    className="absolute top-0 bottom-0 w-px bg-pastel-pink z-10"
                     style={{ left: todayX }}
                   />
                 </div>
@@ -375,19 +459,33 @@ export default function GanttView({ boardId }: Props): JSX.Element {
 
               {/* Body grid */}
               <div className="relative" style={{ height: cardPositions.totalHeight }}>
-                {/* Vertical grid lines */}
-                {ticks.map((t, i) => (
+                {/* Weekend shading (only meaningful in day zoom) */}
+                {header.weekendSpans.map((s, i) => (
                   <div
-                    key={i}
-                    className={`absolute top-0 bottom-0 w-px ${
-                      t.major ? 'bg-pastel-purple/30' : 'bg-pastel-purple/10'
-                    }`}
+                    key={`we-${i}`}
+                    className="absolute top-0 bottom-0 bg-pastel-purple/8"
+                    style={{ left: s.x, width: s.width }}
+                  />
+                ))}
+                {/* Week lines (subtle) */}
+                {header.weekStarts.map((x, i) => (
+                  <div
+                    key={`wk-${i}`}
+                    className="absolute top-0 bottom-0 w-px bg-pastel-purple/15"
+                    style={{ left: x }}
+                  />
+                ))}
+                {/* Month lines (stronger) */}
+                {header.top.map((t, i) => (
+                  <div
+                    key={`mo-${i}`}
+                    className="absolute top-0 bottom-0 w-px bg-pastel-purple/40"
                     style={{ left: t.x }}
                   />
                 ))}
                 {/* Today line */}
                 <div
-                  className="absolute top-0 bottom-0 w-0.5 bg-pastel-pink z-10 pointer-events-none"
+                  className="absolute top-0 bottom-0 w-0.5 bg-pastel-pink z-10 pointer-events-none shadow-[0_0_4px_rgba(249,168,212,0.6)]"
                   style={{ left: todayX }}
                 />
                 {/* Group separators / row backgrounds */}
@@ -465,20 +563,21 @@ export default function GanttView({ boardId }: Props): JSX.Element {
                   const tagColor = item.card.tags[0]?.color
                   const overdue =
                     item.card.progress < 100 && end.isBefore(dayjs(), 'day')
+                  const hasRoomForLabel = width >= 60
                   return (
                     <div
                       key={item.card.id}
-                      className={`absolute group rounded-lg border shadow-sm overflow-hidden cursor-grab active:cursor-grabbing select-none ${
+                      className={`absolute group rounded-lg border shadow-sm hover:shadow-md hover:z-10 overflow-hidden cursor-grab active:cursor-grabbing select-none transition-shadow ${
                         overdue
-                          ? 'border-pastel-pink'
-                          : 'border-pastel-purple/50'
+                          ? 'border-pastel-pink ring-1 ring-pastel-pink/40'
+                          : 'border-white/60'
                       }`}
                       style={{
                         top: pos.y + 4,
                         height: ROW_HEIGHT - 8,
                         left: x,
                         width,
-                        backgroundColor: tagColor ?? '#c4b5fd'
+                        backgroundColor: tagColor ?? 'var(--theme-accent)'
                       }}
                       onMouseDown={(e) => startDrag(e, item.card.id, 'move', item.start, item.end)}
                       onClick={(e) => {
@@ -492,7 +591,7 @@ export default function GanttView({ boardId }: Props): JSX.Element {
                     >
                       {/* Progress fill */}
                       <div
-                        className="absolute inset-y-0 left-0 bg-black/15 pointer-events-none"
+                        className="absolute inset-y-0 left-0 bg-black/20 pointer-events-none"
                         style={{ width: `${item.card.progress}%` }}
                       />
                       {/* Resize handle left */}
@@ -509,9 +608,29 @@ export default function GanttView({ boardId }: Props): JSX.Element {
                           startDrag(e, item.card.id, 'resize-end', item.start, item.end)
                         }
                       />
-                      <div className="relative h-full flex items-center px-2 text-xs font-medium text-ink-50 truncate">
-                        {item.card.title}
-                      </div>
+                      {hasRoomForLabel ? (
+                        <div className="relative h-full flex items-center justify-between gap-1 px-2 text-xs font-medium text-ink-50">
+                          <span
+                            className="truncate"
+                            style={{ textShadow: '0 1px 2px rgba(0,0,0,0.15)' }}
+                          >
+                            {item.card.title}
+                          </span>
+                          {width >= 90 && item.card.progress > 0 && (
+                            <span
+                              className="text-[10px] tabular-nums opacity-80 flex-shrink-0"
+                              style={{ textShadow: '0 1px 2px rgba(0,0,0,0.15)' }}
+                            >
+                              {item.card.progress}%
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        // Tiny bar: just a centered dot to confirm the bar is there.
+                        <div className="relative h-full flex items-center justify-center">
+                          <div className="w-1 h-1 rounded-full bg-white/80" />
+                        </div>
+                      )}
                     </div>
                   )
                 })}

@@ -5,7 +5,9 @@ import {
   cardsRepo,
   categoriesRepo,
   columnsRepo,
+  inboxRepo,
   ratesRepo,
+  searchRepo,
   tagsRepo,
   transactionsRepo
 } from './db/repos'
@@ -73,6 +75,14 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('rates:list', () => ratesRepo.list())
   ipcMain.handle('rates:upsert', (_, rate) => ratesRepo.upsert(rate))
   ipcMain.handle('rates:remove', (_, from: string, to: string) => ratesRepo.remove(from, to))
+
+  ipcMain.handle('search:all', (_, q: string, limit?: number) =>
+    searchRepo.searchAll(q, limit)
+  )
+
+  ipcMain.handle('inbox:capture', (_, title: string, description: string | null) =>
+    inboxRepo.capture(title, description)
+  )
 
   ipcMain.handle('exports:backupDb', () => backupDb())
   ipcMain.handle('exports:excel', () => exportExcel())

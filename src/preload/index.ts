@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, clipboard } from 'electron'
 import type { DashboardAPI } from '../shared/api'
 
 const invoke = <T>(channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args) as Promise<T>
@@ -58,6 +58,9 @@ const api: DashboardAPI = {
     upsert: (rate) => invoke('rates:upsert', rate),
     remove: (from, to) => invoke('rates:remove', from, to)
   },
+  search: {
+    all: (q, limit) => invoke('search:all', q, limit)
+  },
   exports: {
     backupDb: () => invoke('exports:backupDb'),
     excel: () => invoke('exports:excel')
@@ -65,6 +68,19 @@ const api: DashboardAPI = {
   imports: {
     db: () => invoke('imports:db'),
     excel: () => invoke('imports:excel')
+  },
+  clipboard: {
+    readText: () => clipboard.readText()
+  },
+  inbox: {
+    capture: (title, description) => invoke('inbox:capture', title, description ?? null)
+  },
+  menu: {
+    onAction: (cb) => {
+      const listener = (_e: unknown, action: string): void => cb(action)
+      ipcRenderer.on('menu:action', listener)
+      return () => ipcRenderer.removeListener('menu:action', listener)
+    }
   }
 }
 

@@ -9,12 +9,14 @@ import {
   GanttChartIcon,
   DatabaseIcon,
   ChevronDownIcon,
-  FlowerIcon
+  FlowerIcon,
+  SearchIcon
 } from 'lucide-react'
 import HomePage from './pages/HomePage'
 import KanbanPage from './pages/KanbanPage'
 import FinancesPage from './pages/FinancesPage'
 import GanttPage from './pages/GanttPage'
+import CommandPalette from './components/CommandPalette'
 import { useNavStore } from './lib/navStore'
 
 export default function App(): JSX.Element {
@@ -24,6 +26,75 @@ export default function App(): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const [busy, setBusy] = useState(false)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent): void {
+      const isMac = navigator.platform.toLowerCase().includes('mac')
+      const cmdK = (isMac ? e.metaKey : e.ctrlKey) && e.key.toLowerCase() === 'k'
+      if (cmdK) {
+        e.preventDefault()
+        setPaletteOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // Listen to native-menu actions and route them to the right place.
+  useEffect(() => {
+    return window.api.menu.onAction(async (action) => {
+      switch (action) {
+        case 'go-home':
+          setTab('home')
+          break
+        case 'go-kanban':
+          if (activeBoardId) setTab('kanban')
+          break
+        case 'go-gantt':
+          if (activeBoardId) setTab('gantt')
+          break
+        case 'go-finances':
+          setTab('finances')
+          break
+        case 'open-search':
+          setPaletteOpen(true)
+          break
+        case 'new-board':
+          setTab('home')
+          // HomePage will render; the user clicks 'Nuevo tablero'. A future
+          // refactor could push a global 'open-new-board-modal' flag.
+          break
+        case 'export-db':
+          await run(
+            () => window.api.exports.backupDb(),
+            (p) => `Backup guardado en:\n${p}`
+          )
+          break
+        case 'export-excel':
+          await run(
+            () => window.api.exports.excel(),
+            (p) => `Excel guardado en:\n${p}`
+          )
+          break
+        case 'import-db':
+          await run(
+            () => window.api.imports.db(),
+            (p) => `Base de datos restaurada desde:\n${p}\n\nLa app se recargará.`,
+            true
+          )
+          break
+        case 'import-excel':
+          await run(
+            () => window.api.imports.excel(),
+            (p) => `Datos importados desde:\n${p}\n\nLa app se recargará.`,
+            true
+          )
+          break
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeBoardId])
 
   useEffect(() => {
     if (!menuOpen) return
@@ -90,7 +161,18 @@ export default function App(): JSX.Element {
             <WalletIcon size={16} /> Finanzas
           </button>
         </div>
-        <div ref={menuRef} className="relative">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPaletteOpen(true)}
+            className="btn"
+            title="Buscar (Cmd/Ctrl+K)"
+          >
+            <SearchIcon size={16} /> Buscar
+            <kbd className="text-[10px] font-mono ml-1 px-1 rounded bg-pastel-purple/20 border border-pastel-purple/30 text-ink-300">
+              ⌘K
+            </kbd>
+          </button>
+          <div ref={menuRef} className="relative">
           <button
             onClick={() => setMenuOpen((v) => !v)}
             className="btn"
@@ -155,6 +237,7 @@ export default function App(): JSX.Element {
               </button>
             </div>
           )}
+          </div>
         </div>
       </header>
       <main className="flex-1 overflow-hidden">
@@ -173,8 +256,13 @@ export default function App(): JSX.Element {
         >
           JFrancisco Robles
         </a>{' '}
-        con cariño para <span className="text-pastel-pink font-medium">Palomita</span> 🌸
+        con cariño para{' '}
+        <span className="font-semibold bg-gradient-to-r from-rose-400 to-fuchsia-400 bg-clip-text text-transparent">
+          Palomita
+        </span>{' '}
+        🌸
       </footer>
+      {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
     </div>
   )
 }

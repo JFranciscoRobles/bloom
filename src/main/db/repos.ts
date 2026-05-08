@@ -9,6 +9,7 @@ import type {
   ExchangeRate,
   GanttCard,
   MonthlySummary,
+  SearchResult,
   Tag,
   Transaction,
   TxType
@@ -421,5 +422,185 @@ export const ratesRepo = {
     getDb()
       .prepare('DELETE FROM exchange_rates WHERE from_currency = ? AND to_currency = ?')
       .run(from.toUpperCase(), to.toUpperCase())
+  }
+}
+
+export const inboxRepo = {
+  /**
+   * Returns the column id of the Inbox column. Creates the
+   * 'Inbox' board (color rose) + 'Por revisar' column on first use.
+   */
+  ensure(): { boardId: number; columnId: number } {
+    const db = getDb()
+    let board = db.prepare("SELECT * FROM boards WHERE name = 'Inbox' LIMIT 1").get() as
+      | Board
+      | undefined
+    if (!board) {
+      board = boardsRepo.create('Inbox', 'rose')
+    }
+    let column = db
+      .prepare("SELECT * FROM columns WHERE board_id = ? AND name = 'Por revisar' LIMIT 1")
+      .get(board.id) as Column | undefined
+    if (!column) {
+      column = columnsRepo.create(board.id, 'Por revisar')
+    }
+    return { boardId: board.id, columnId: column.id }
+  },
+  /** Quick capture: create a card in the Inbox column with the given title. */
+  capture(title: string, description?: string | null): Card {
+    const { columnId } = inboxRepo.ensure()
+    const card = cardsRepo.create(columnId, title)
+    if (description != null && description !== '') {
+      cardsRepo.update(card.id, { description })
+    }
+    return card
+  }
+}
+
+export const notificationsRepo = {
+  /**
+   * Returns cards due today or tomorrow that are not finished.
+   * Sorted soonest-first.
+   */
+  dueSoon(): Array<{
+    id: number
+    title: string
+    due_date: string
+    progress: number
+    board_id: number
+    board_name: string
+  }> {
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10)
+    return getDb()
+      .prepare(
+        `SELECT c.id, c.title, c.due_date, c.progress,
+                col.board_id AS board_id, b.name AS board_name
+         FROM cards c
+         JOIN columns col ON col.id = c.column_id
+         JOIN boards b ON b.id = col.board_id
+         WHERE c.progress < 100
+           AND c.due_date IS NOT NULL
+           AND c.due_date <= ?
+         ORDER BY c.due_date ASC, c.id ASC`
+      )
+      .all(tomorrow) as Array<{
+      id: number
+      title: string
+      due_date: string
+      progress: number
+      board_id: number
+      board_name: string
+    }>
+  }
+}
+
+export const searchRepo = {
+  /**
+   * Full-text-ish search across boards, cards (incl. tags) and transactions.
+   * Uses LIKE queries — fine for personal-scale data (thousands of rows).
+   */
+  searchAll(query: string, limit = 10): SearchResult[] {
+    const q = query.trim()
+    if (!q) return []
+    const like = `%${q.replace(/[%_]/g, (m) => `\\${m}`)}%`
+    const db = getDb()
+
+    const boards = db
+      .prepare(
+        `SELECT id, name, theme FROM boards WHERE name LIKE ? ESCAPE '\\' ORDER BY name LIMIT ?`
+      )
+      .all(like, limit) as Array<{ id: number; name: string; theme: string }>
+
+    const cards = db
+      .prepare(
+        `SELECT c.id, c.title, c.description, c.column_id,
+                col.name AS column_name, col.board_id AS board_id,
+                b.name AS board_name,
+                (SELECT t.color FROM card_tags ct JOIN tags t ON t.id = ct.tag_id
+                  WHERE ct.card_id = c.id LIMIT 1) AS tag_color
+         FROM cards c
+         JOIN columns col ON col.id = c.column_id
+         JOIN boards b ON b.id = col.board_id
+         WHERE c.title LIKE ? ESCAPE '\\'
+            OR (c.description IS NOT NULL AND c.description LIKE ? ESCAPE '\\')
+            OR EXISTS (
+              SELECT 1 FROM card_tags ct JOIN tags t ON t.id = ct.tag_id
+              WHERE ct.card_id = c.id AND t.name LIKE ? ESCAPE '\\'
+            )
+         ORDER BY
+           CASE WHEN c.title LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END,
+           c.id DESC
+         LIMIT ?`
+      )
+      .all(like, like, like, like, limit) as Array<{
+      id: number
+      title: string
+      description: string | null
+      column_id: number
+      column_name: string
+      board_id: number
+      board_name: string
+      tag_color: string | null
+    }>
+
+    const txs = db
+      .prepare(
+        `SELECT t.id, t.type, t.amount, t.currency, t.date, t.note,
+                a.name AS account_name,
+                cat.name AS category_name, cat.color AS category_color
+         FROM transactions t
+         JOIN accounts a ON a.id = t.account_id
+         LEFT JOIN categories cat ON cat.id = t.category_id
+         WHERE (t.note IS NOT NULL AND t.note LIKE ? ESCAPE '\\')
+            OR a.name LIKE ? ESCAPE '\\'
+            OR (cat.name IS NOT NULL AND cat.name LIKE ? ESCAPE '\\')
+            OR CAST(t.amount AS TEXT) LIKE ? ESCAPE '\\'
+         ORDER BY t.date DESC, t.id DESC
+         LIMIT ?`
+      )
+      .all(like, like, like, like, limit) as Array<{
+      id: number
+      type: TxType
+      amount: number
+      currency: string
+      date: string
+      note: string | null
+      account_name: string
+      category_name: string | null
+      category_color: string | null
+    }>
+
+    const results: SearchResult[] = [
+      ...boards.map(
+        (b): SearchResult => ({ kind: 'board', id: b.id, name: b.name, theme: b.theme })
+      ),
+      ...cards.map(
+        (c): SearchResult => ({
+          kind: 'card',
+          id: c.id,
+          title: c.title,
+          snippet: c.description ? c.description.slice(0, 120) : null,
+          board_id: c.board_id,
+          board_name: c.board_name,
+          column_name: c.column_name,
+          tag_color: c.tag_color
+        })
+      ),
+      ...txs.map(
+        (t): SearchResult => ({
+          kind: 'transaction',
+          id: t.id,
+          type: t.type,
+          amount: t.amount,
+          currency: t.currency,
+          date: t.date,
+          account_name: t.account_name,
+          category_name: t.category_name,
+          category_color: t.category_color,
+          note: t.note
+        })
+      )
+    ]
+    return results
   }
 }

@@ -37,6 +37,20 @@ async function main() {
     .toBuffer()
   writeFileSync(resolve(buildDir, 'icon.png'), png512)
   console.log('✓ wrote build/icon.png (512 px)')
+
+  // Tray icons. Windows uses the colored 32x32 (rendered at 16 by the system).
+  // macOS uses a template image (black silhouette + alpha) named *Template.png.
+  const tray32 = await sharp(svg, { density: 256 })
+    .resize(32, 32)
+    .png({ compressionLevel: 9 })
+    .toBuffer()
+  writeFileSync(resolve(buildDir, 'tray-icon.png'), tray32)
+  const tray16 = await sharp(svg, { density: 256 })
+    .resize(16, 16)
+    .png({ compressionLevel: 9 })
+    .toBuffer()
+  writeFileSync(resolve(buildDir, 'tray-icon@1x.png'), tray16)
+  console.log('✓ wrote build/tray-icon.png (32 px) + tray-icon@1x.png (16 px)')
 }
 
 main().catch((e) => {

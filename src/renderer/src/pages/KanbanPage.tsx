@@ -15,6 +15,7 @@ import type { Board, CardWithTags, Column } from '../../../shared/types'
 import { useAsync } from '../hooks/useAsync'
 import KanbanColumn from '../components/KanbanColumn'
 import CardItem from '../components/CardItem'
+import CardEditor from '../components/CardEditor'
 import PromptModal from '../components/PromptModal'
 import BoardPromptModal from '../components/BoardPromptModal'
 import { useThemeStore } from '../lib/themeStore'
@@ -105,6 +106,9 @@ function BoardView({ boardId }: { boardId: number }): JSX.Element {
   const [columns, setColumns] = useState<ColumnState[]>([])
   const [activeCard, setActiveCard] = useState<CardWithTags | null>(null)
   const [addingColumn, setAddingColumn] = useState(false)
+  const [openCard, setOpenCard] = useState<CardWithTags | null>(null)
+  const pendingCardId = useNavStore((s) => s.pendingCardId)
+  const consumePendingCard = useNavStore((s) => s.consumePendingCard)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
@@ -120,6 +124,20 @@ function BoardView({ boardId }: { boardId: number }): JSX.Element {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId])
+
+  // When the user opens a card from the command palette, find it in the loaded
+  // columns and open the editor.
+  useEffect(() => {
+    if (pendingCardId == null) return
+    for (const col of columns) {
+      const found = col.cards.find((c) => c.id === pendingCardId)
+      if (found) {
+        setOpenCard(found)
+        consumePendingCard()
+        return
+      }
+    }
+  }, [pendingCardId, columns, consumePendingCard])
 
   const columnIds = useMemo(() => columns.map((c) => `col-${c.id}`), [columns])
 
@@ -223,6 +241,15 @@ function BoardView({ boardId }: { boardId: number }): JSX.Element {
           confirmText="Crear"
           onConfirm={handleAddColumn}
           onClose={() => setAddingColumn(false)}
+        />
+      )}
+      {openCard && (
+        <CardEditor
+          card={openCard}
+          onClose={() => {
+            setOpenCard(null)
+            load()
+          }}
         />
       )}
     </div>

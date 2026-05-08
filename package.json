@@ -19,6 +19,7 @@
   "dependencies": {
     "better-sqlite3": "^11.3.0",
     "dayjs": "^1.11.13",
+    "electron-updater": "^6.8.3",
     "exceljs": "^4.4.0"
   },
   "devDependencies": {
@@ -57,7 +58,13 @@
     },
     "files": [
       "out/**/*",
+      "build/tray-icon.png",
+      "build/tray-icon@1x.png",
       "package.json"
+    ],
+    "extraResources": [
+      "build/tray-icon.png",
+      "build/tray-icon@1x.png"
     ],
     "win": {
       "target": [
@@ -73,6 +80,12 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "JFranciscoRobles",
+      "repo": "bloom",
+      "releaseType": "release"
     }
   }
 }

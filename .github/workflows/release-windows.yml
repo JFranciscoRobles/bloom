@@ -1,12 +1,15 @@
-name: Build Windows installer
+name: Build & publish Windows installer
 
 on:
-  # Manual trigger from the Actions tab
+  # Manual trigger from the Actions tab (won't publish, just builds artifact)
   workflow_dispatch:
-  # Auto-build when you push a tag like v0.1.0
+  # Publish when you push a tag like v1.0.0
   push:
     tags:
       - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -28,10 +31,12 @@ jobs:
       - name: Rebuild native modules for Electron (better-sqlite3)
         run: npm run rebuild
 
-      - name: Build Windows installer
-        run: npm run build:win
+      - name: Build & publish to GitHub Release
+        # On a tag push, electron-builder uploads the .exe + latest.yml to the
+        # GitHub Release matching the tag (creating it if needed). On manual
+        # runs we only build (artifact).
+        run: npx electron-vite build && npx electron-builder --win --x64 --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
         env:
-          # electron-builder writes here; nothing to publish, just build
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload installer as workflow artifact
@@ -41,15 +46,5 @@ jobs:
           path: |
             dist/*.exe
             dist/*.exe.blockmap
+            dist/latest.yml
           if-no-files-found: error
-
-      - name: Attach installer to GitHub Release (only on tag push)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/*.exe
-            dist/*.exe.blockmap
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

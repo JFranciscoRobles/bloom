@@ -85,3 +85,42 @@ export interface MonthlySummary {
   income: number
   expense: number
 }
+
+export interface DueSoonCard {
+  id: number
+  title: string
+  due_date: string
+  progress: number
+  board_id: number
+  board_name: string
+}
+
+export type SearchResult =
+  | {
+      kind: 'card'
+      id: number
+      title: string
+      snippet: string | null
+      board_id: number
+      board_name: string
+      column_name: string
+      tag_color: string | null
+    }
+  | {
+      kind: 'board'
+      id: number
+      name: string
+      theme: string
+    }
+  | {
+      kind: 'transaction'
+      id: number
+      type: TxType
+      amount: number
+      currency: string
+      date: string
+      account_name: string
+      category_name: string | null
+      category_color: string | null
+      note: string | null
+    }
