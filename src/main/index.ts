@@ -12,6 +12,21 @@ import { buildAppMenu } from './menu'
 let mainWindow: BrowserWindow | null = null
 let isQuiting = false
 
+// Single-instance lock: if another Bloom process is already running, focus
+// its window and quit this one instead of spawning a second app.
+const gotLock = app.requestSingleInstanceLock()
+if (!gotLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      if (!mainWindow.isVisible()) mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+}
+
 function createWindow(): void {
   const win = new BrowserWindow({
     width: 1280,
