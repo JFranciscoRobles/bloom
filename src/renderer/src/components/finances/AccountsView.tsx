@@ -4,6 +4,21 @@ import { useAsync } from '../../hooks/useAsync'
 import type { Account } from '../../../../shared/types'
 import PromptModal from '../PromptModal'
 import { useCurrencies } from '../../hooks/useCurrencies'
+import { confirm } from '../../lib/confirm'
+
+// Common currencies offered when creating an account. USD and MXN go first so
+// they're the default visible options; the rest follow in alphabetical order.
+const COMMON_CURRENCIES = ['USD', 'MXN', 'EUR', 'GBP', 'CAD', 'JPY', 'BRL', 'ARS', 'COP', 'CLP']
+
+/** Merge the common list with whatever the user already uses, USD+MXN first. */
+function currencyChoices(existing: string[]): string[] {
+  const set = new Set<string>(COMMON_CURRENCIES)
+  for (const c of existing) set.add(c)
+  const first: string[] = []
+  if (set.delete('USD')) first.push('USD')
+  if (set.delete('MXN')) first.push('MXN')
+  return [...first, ...[...set].sort()]
+}
 
 export default function AccountsView(): JSX.Element {
   const q = useAsync(() => window.api.accounts.list(), [])
@@ -32,7 +47,13 @@ export default function AccountsView(): JSX.Element {
   }
 
   async function handleRemove(a: Account): Promise<void> {
-    if (!confirm(`Borrar cuenta "${a.name}" y todas sus transacciones?`)) return
+    if (
+      !(await confirm({
+        message: `Borrar la cuenta "${a.name}" y todas sus transacciones?`,
+        confirmText: 'Borrar'
+      }))
+    )
+      return
     await window.api.accounts.remove(a.id)
     q.reload()
   }
@@ -53,19 +74,17 @@ export default function AccountsView(): JSX.Element {
           </div>
           <div className="w-28">
             <label className="text-xs text-ink-400">Moneda</label>
-            <input
+            <select
               value={currency}
-              onChange={(e) => setCurrency(e.target.value.toUpperCase())}
+              onChange={(e) => setCurrency(e.target.value)}
               className="input"
-              maxLength={3}
-              list="currency-suggestions"
-              placeholder="MXN"
-            />
-            <datalist id="currency-suggestions">
-              {currencies.map((c) => (
-                <option key={c} value={c} />
+            >
+              {currencyChoices(currencies).map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
               ))}
-            </datalist>
+            </select>
           </div>
           <div className="w-36">
             <label className="text-xs text-ink-400">Saldo inicial</label>

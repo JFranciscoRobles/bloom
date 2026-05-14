@@ -3,6 +3,7 @@ import { PlusIcon, Trash2Icon } from 'lucide-react'
 import { useAsync } from '../../hooks/useAsync'
 import dayjs from 'dayjs'
 import { useCurrencies } from '../../hooks/useCurrencies'
+import { confirm, notify } from '../../lib/confirm'
 
 export default function RatesView(): JSX.Element {
   const q = useAsync(() => window.api.rates.list(), [])
@@ -15,7 +16,7 @@ export default function RatesView(): JSX.Element {
     const n = Number(rate)
     if (!from.trim() || !to.trim() || !Number.isFinite(n) || n <= 0) return
     if (from.trim().toUpperCase() === to.trim().toUpperCase()) {
-      alert('La moneda de origen y destino deben ser diferentes')
+      await notify('La moneda de origen y destino deben ser diferentes')
       return
     }
     await window.api.rates.upsert({
@@ -29,7 +30,8 @@ export default function RatesView(): JSX.Element {
   }
 
   async function handleRemove(f: string, t: string): Promise<void> {
-    if (!confirm(`Borrar tasa ${f}→${t}?`)) return
+    if (!(await confirm({ message: `Borrar la tasa ${f} → ${t}?`, confirmText: 'Borrar' })))
+      return
     await window.api.rates.remove(f, t)
     q.reload()
   }

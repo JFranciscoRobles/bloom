@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import type { CardWithTags } from '../../../shared/types'
 import CardEditor from './CardEditor'
+import { confirm } from '../lib/confirm'
 
 interface Props {
   card: CardWithTags
@@ -56,7 +57,8 @@ export default function CardItem({ card, onChange, dragging }: Props): JSX.Eleme
 
   async function handleRemove(e: React.MouseEvent): Promise<void> {
     e.stopPropagation()
-    if (!confirm('Borrar tarjeta?')) return
+    if (!(await confirm({ message: `Borrar la tarjeta "${card.title}"?`, confirmText: 'Borrar' })))
+      return
     await window.api.cards.remove(card.id)
     onChange?.()
   }

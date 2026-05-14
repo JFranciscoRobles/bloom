@@ -13,13 +13,21 @@ import {
   CartesianGrid
 } from 'recharts'
 import dayjs from 'dayjs'
-import type { Category, ExchangeRate, MonthlySummary, Transaction } from '../../../../shared/types'
+import type {
+  Account,
+  Category,
+  ExchangeRate,
+  Transaction
+} from '../../../../shared/types'
 import { buildRateLookup, convert, formatMoney } from '../../lib/currency'
 import { useCurrencies } from '../../hooks/useCurrencies'
+
+const ALL_WALLETS = 0 as const
 
 export default function SummaryView(): JSX.Element {
   const [year, setYear] = useState(dayjs().year())
   const [baseCurrency, setBaseCurrency] = useState('MXN')
+  const [walletId, setWalletId] = useState<number>(ALL_WALLETS)
   const { currencies } = useCurrencies()
 
   useEffect(() => {
@@ -28,21 +36,24 @@ export default function SummaryView(): JSX.Element {
     }
   }, [currencies, baseCurrency])
 
-  const [summary, setSummary] = useState<MonthlySummary[]>([])
+  const [accounts, setAccounts] = useState<Account[]>([])
   const [rates, setRates] = useState<ExchangeRate[]>([])
-  const [txs, setTxs] = useState<Transaction[]>([])
+  const [allTxs, setAllTxs] = useState<Transaction[]>([])
+  const [yearTxs, setYearTxs] = useState<Transaction[]>([])
   const [categories, setCategories] = useState<Category[]>([])
 
   async function load(): Promise<void> {
-    const [s, r, t, c] = await Promise.all([
-      window.api.transactions.monthlySummary(year),
+    const [a, r, ytx, atx, c] = await Promise.all([
+      window.api.accounts.list(),
       window.api.rates.list(),
       window.api.transactions.list({ from: `${year}-01-01`, to: `${year}-12-31` }),
+      window.api.transactions.list(), // for total balance (all time)
       window.api.categories.list()
     ])
-    setSummary(s)
+    setAccounts(a)
     setRates(r)
-    setTxs(t)
+    setYearTxs(ytx)
+    setAllTxs(atx)
     setCategories(c)
   }
 
@@ -53,27 +64,46 @@ export default function SummaryView(): JSX.Element {
 
   const rateMap = useMemo(() => buildRateLookup(rates), [rates])
 
+  // Active set of transactions, filtered by the wallet selector.
+  const txs = useMemo(
+    () => (walletId === ALL_WALLETS ? yearTxs : yearTxs.filter((t) => t.account_id === walletId)),
+    [yearTxs, walletId]
+  )
+  const activeWallet = useMemo(
+    () => (walletId === ALL_WALLETS ? null : accounts.find((a) => a.id === walletId) ?? null),
+    [accounts, walletId]
+  )
+
+  // Per-wallet running balance from initial_balance + lifetime transactions.
+  const walletBalances = useMemo(() => {
+    const m = new Map<number, number>()
+    for (const a of accounts) m.set(a.id, a.initial_balance)
+    for (const t of allTxs) {
+      const delta = t.type === 'income' ? t.amount : -t.amount
+      m.set(t.account_id, (m.get(t.account_id) ?? 0) + delta)
+    }
+    return m
+  }, [accounts, allTxs])
+
+  // Build monthly aggregate from filtered txs (works for any wallet selection).
   const monthly = useMemo(() => {
     const months = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`)
     return months.map((m) => {
       let income = 0
       let expense = 0
-      let unconverted = false
-      for (const row of summary.filter((s) => s.month === m)) {
-        const inc = convert(row.income, row.currency, baseCurrency, rateMap)
-        const exp = convert(row.expense, row.currency, baseCurrency, rateMap)
-        if (inc === null || exp === null) unconverted = true
-        income += inc ?? row.income
-        expense += exp ?? row.expense
+      for (const t of txs) {
+        if (!t.date.startsWith(m)) continue
+        const v = convert(t.amount, t.currency, baseCurrency, rateMap) ?? t.amount
+        if (t.type === 'income') income += v
+        else expense += v
       }
       return {
         month: dayjs(m + '-01').format('MMM'),
         ingresos: Math.round(income * 100) / 100,
-        gastos: Math.round(expense * 100) / 100,
-        unconverted
+        gastos: Math.round(expense * 100) / 100
       }
     })
-  }, [summary, baseCurrency, rateMap, year])
+  }, [txs, baseCurrency, rateMap, year])
 
   const expenseByCategory = useMemo(() => {
     const map = new Map<number, number>()
@@ -102,10 +132,36 @@ export default function SummaryView(): JSX.Element {
     return [...map.entries()].map(([currency, v]) => ({ currency, ...v }))
   }, [txs])
 
+  const yearTotals = useMemo(() => {
+    let income = 0
+    let expense = 0
+    for (const t of txs) {
+      const v = convert(t.amount, t.currency, baseCurrency, rateMap) ?? t.amount
+      if (t.type === 'income') income += v
+      else expense += v
+    }
+    return { income, expense, net: income - expense }
+  }, [txs, baseCurrency, rateMap])
+
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
         <h2 className="font-semibold">Resumen</h2>
+        <div>
+          <label className="text-xs text-ink-400 mr-1">Wallet</label>
+          <select
+            value={walletId}
+            onChange={(e) => setWalletId(Number(e.target.value))}
+            className="input w-48 inline-block"
+          >
+            <option value={ALL_WALLETS}>Todas las cuentas</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name} ({a.currency})
+              </option>
+            ))}
+          </select>
+        </div>
         <div>
           <label className="text-xs text-ink-400 mr-1">Año</label>
           <input
@@ -131,9 +187,69 @@ export default function SummaryView(): JSX.Element {
         </div>
       </div>
 
+      {/* Wallet balance cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {accounts.map((a) => {
+          const balance = walletBalances.get(a.id) ?? a.initial_balance
+          const isActive = walletId === a.id
+          return (
+            <button
+              key={a.id}
+              onClick={() => setWalletId(isActive ? ALL_WALLETS : a.id)}
+              className={`text-left rounded-2xl border bg-white p-3 transition-all ${
+                isActive
+                  ? 'border-pastel-purple ring-2 ring-pastel-purple/40 shadow-md -translate-y-0.5'
+                  : 'border-pastel-purple/30 hover:border-pastel-purple/60 hover:shadow-sm'
+              }`}
+              title={isActive ? 'Click para ver todas' : `Filtrar por ${a.name}`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-ink-300 truncate">{a.name}</span>
+                <span className="text-[10px] uppercase tracking-wide text-ink-400 px-1.5 py-0.5 rounded-full bg-pastel-purple/15">
+                  {a.currency}
+                </span>
+              </div>
+              <div
+                className={`text-lg font-semibold font-mono mt-1 ${
+                  balance < 0 ? 'text-rose-400' : 'text-ink-100'
+                }`}
+              >
+                {formatMoney(balance, a.currency)}
+              </div>
+            </button>
+          )
+        })}
+        {accounts.length === 0 && (
+          <div className="col-span-full text-sm text-ink-400 text-center py-4">
+            No hay cuentas. Crea una en la pestaña Cuentas.
+          </div>
+        )}
+      </div>
+
+      {/* Year totals */}
+      <div className="grid grid-cols-3 gap-3">
+        <SummaryStat
+          label={activeWallet ? `Ingresos ${year}` : `Ingresos ${year} (total)`}
+          value={formatMoney(yearTotals.income, baseCurrency)}
+          tone="good"
+        />
+        <SummaryStat
+          label={activeWallet ? `Gastos ${year}` : `Gastos ${year} (total)`}
+          value={formatMoney(yearTotals.expense, baseCurrency)}
+          tone="bad"
+        />
+        <SummaryStat
+          label={activeWallet ? `Neto ${year}` : `Neto ${year} (total)`}
+          value={formatMoney(yearTotals.net, baseCurrency)}
+          tone={yearTotals.net >= 0 ? 'good' : 'bad'}
+        />
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="card">
-          <h3 className="text-sm text-ink-400 mb-2">Mensual ({baseCurrency})</h3>
+          <h3 className="text-sm text-ink-400 mb-2">
+            Mensual{activeWallet ? ` · ${activeWallet.name}` : ''} ({baseCurrency})
+          </h3>
           <div style={{ width: '100%', height: 280 }}>
             <ResponsiveContainer>
               <BarChart data={monthly}>
@@ -141,7 +257,11 @@ export default function SummaryView(): JSX.Element {
                 <XAxis dataKey="month" stroke="#7a6aa0" />
                 <YAxis stroke="#7a6aa0" />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #c4b5fd', borderRadius: 12 }}
+                  contentStyle={{
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #c4b5fd',
+                    borderRadius: 12
+                  }}
                 />
                 <Legend />
                 <Bar dataKey="ingresos" fill="#86efac" radius={[6, 6, 0, 0]} />
@@ -152,7 +272,9 @@ export default function SummaryView(): JSX.Element {
         </div>
 
         <div className="card">
-          <h3 className="text-sm text-ink-400 mb-2">Gastos por categoría ({baseCurrency})</h3>
+          <h3 className="text-sm text-ink-400 mb-2">
+            Gastos por categoría{activeWallet ? ` · ${activeWallet.name}` : ''} ({baseCurrency})
+          </h3>
           <div style={{ width: '100%', height: 280 }}>
             <ResponsiveContainer>
               <PieChart>
@@ -170,7 +292,11 @@ export default function SummaryView(): JSX.Element {
                   ))}
                 </Pie>
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #c4b5fd', borderRadius: 12 }}
+                  contentStyle={{
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #c4b5fd',
+                    borderRadius: 12
+                  }}
                 />
               </PieChart>
             </ResponsiveContainer>
@@ -179,7 +305,9 @@ export default function SummaryView(): JSX.Element {
       </div>
 
       <div className="card">
-        <h3 className="text-sm text-ink-400 mb-2">Totales por moneda (sin convertir)</h3>
+        <h3 className="text-sm text-ink-400 mb-2">
+          Totales por moneda (sin convertir){activeWallet ? ` · ${activeWallet.name}` : ''}
+        </h3>
         <table className="w-full text-sm">
           <thead className="text-xs text-ink-400 uppercase">
             <tr>
@@ -214,6 +342,24 @@ export default function SummaryView(): JSX.Element {
           </tbody>
         </table>
       </div>
+    </div>
+  )
+}
+
+function SummaryStat({
+  label,
+  value,
+  tone
+}: {
+  label: string
+  value: string
+  tone: 'good' | 'bad'
+}): JSX.Element {
+  const color = tone === 'good' ? 'text-emerald-400' : 'text-rose-400'
+  return (
+    <div className="rounded-2xl bg-white border border-pastel-purple/30 p-3 shadow-sm">
+      <div className="text-[11px] uppercase tracking-wide text-ink-400">{label}</div>
+      <div className={`text-xl font-semibold font-mono mt-0.5 ${color}`}>{value}</div>
     </div>
   )
 }

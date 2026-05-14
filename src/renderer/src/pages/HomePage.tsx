@@ -12,6 +12,7 @@ import { useAsync } from '../hooks/useAsync'
 import { BOARD_THEMES, getTheme } from '../lib/themes'
 import { useNavStore } from '../lib/navStore'
 import { useThemeStore } from '../lib/themeStore'
+import { confirm } from '../lib/confirm'
 import BoardPromptModal from '../components/BoardPromptModal'
 
 interface BoardStats {
@@ -67,7 +68,13 @@ export default function HomePage(): JSX.Element {
 
   async function handleRemove(b: Board, e: React.MouseEvent): Promise<void> {
     e.stopPropagation()
-    if (!confirm(`Borrar tablero "${b.name}" y todas sus columnas y tarjetas?`)) return
+    if (
+      !(await confirm({
+        message: `Borrar el tablero "${b.name}" y todas sus columnas y tarjetas?`,
+        confirmText: 'Borrar'
+      }))
+    )
+      return
     await window.api.boards.remove(b.id)
     boardsQ.reload()
   }

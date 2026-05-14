@@ -21,6 +21,7 @@ import BoardPromptModal from '../components/BoardPromptModal'
 import { useThemeStore } from '../lib/themeStore'
 import { useNavStore } from '../lib/navStore'
 import { getTheme } from '../lib/themes'
+import { confirm } from '../lib/confirm'
 
 export default function KanbanPage(): JSX.Element {
   const activeBoardId = useNavStore((s) => s.activeBoardId)
@@ -44,7 +45,13 @@ export default function KanbanPage(): JSX.Element {
   }
 
   async function handleRemoveBoard(b: Board): Promise<void> {
-    if (!confirm(`Borrar tablero "${b.name}" y todas sus columnas y tarjetas?`)) return
+    if (
+      !(await confirm({
+        message: `Borrar el tablero "${b.name}" y todas sus columnas y tarjetas?`,
+        confirmText: 'Borrar'
+      }))
+    )
+      return
     await window.api.boards.remove(b.id)
     goHome()
   }

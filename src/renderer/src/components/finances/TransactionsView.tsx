@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import dayjs from 'dayjs'
-import { PlusIcon, Trash2Icon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { PlusIcon, Trash2Icon, PencilIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import type { Account, Category, Transaction, TxType } from '../../../../shared/types'
 import { formatMoney } from '../../lib/currency'
 import { useCurrencies } from '../../hooks/useCurrencies'
 import { useNavStore } from '../../lib/navStore'
+import { confirm, notify } from '../../lib/confirm'
+import TransactionEditor from './TransactionEditor'
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const
 
@@ -18,6 +20,7 @@ export default function TransactionsView(): JSX.Element {
   const [highlightedId, setHighlightedId] = useState<number | null>(null)
   const [pageSize, setPageSize] = useState<number>(25)
   const [page, setPage] = useState(1)
+  const [editing, setEditing] = useState<Transaction | null>(null)
 
   const [adding, setAdding] = useState(false)
   const [form, setForm] = useState({
@@ -85,7 +88,7 @@ export default function TransactionsView(): JSX.Element {
   async function handleCreate(): Promise<void> {
     const amount = Number(form.amount)
     if (!form.account_id || !Number.isFinite(amount) || amount <= 0) {
-      alert('Cuenta y monto son obligatorios')
+      await notify('Cuenta y monto son obligatorios')
       return
     }
     await window.api.transactions.create({
@@ -103,7 +106,7 @@ export default function TransactionsView(): JSX.Element {
   }
 
   async function handleRemove(t: Transaction): Promise<void> {
-    if (!confirm('Borrar transacción?')) return
+    if (!(await confirm({ message: 'Borrar esta transacción?', confirmText: 'Borrar' }))) return
     await window.api.transactions.remove(t.id)
     load()
   }
@@ -242,13 +245,15 @@ export default function TransactionsView(): JSX.Element {
                   <tr
                     key={t.id}
                     data-tx-id={t.id}
-                    className={`transition-colors ${
+                    onClick={() => setEditing(t)}
+                    className={`transition-colors cursor-pointer ${
                       highlightedId === t.id
                         ? 'bg-pastel-purple/25'
                         : i % 2 === 0
                           ? 'bg-white'
                           : 'bg-pastel-purple/5'
                     } hover:bg-pastel-purple/15`}
+                    title="Click para editar"
                   >
                     <td className="px-3 py-2 whitespace-nowrap text-ink-200">
                       {dayjs(t.date).format('DD/MM/YYYY')}
@@ -287,14 +292,29 @@ export default function TransactionsView(): JSX.Element {
                     <td className="px-3 py-2 text-ink-300 max-w-[280px] truncate">
                       {t.note}
                     </td>
-                    <td className="px-3 py-2 text-right">
-                      <button
-                        onClick={() => handleRemove(t)}
-                        className="p-1 rounded-full hover:bg-pastel-pink/40 text-ink-400 hover:text-rose-400 transition-colors"
-                        title="Borrar"
-                      >
-                        <Trash2Icon size={14} />
-                      </button>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      <div className="inline-flex items-center gap-0.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setEditing(t)
+                          }}
+                          className="p-1 rounded-full hover:bg-pastel-purple/30 text-ink-400 hover:text-ink-100 transition-colors"
+                          title="Editar"
+                        >
+                          <PencilIcon size={14} />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleRemove(t)
+                          }}
+                          className="p-1 rounded-full hover:bg-pastel-pink/40 text-ink-400 hover:text-rose-400 transition-colors"
+                          title="Borrar"
+                        >
+                          <Trash2Icon size={14} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )
@@ -357,6 +377,16 @@ export default function TransactionsView(): JSX.Element {
           </div>
         )}
       </div>
+
+      {editing && (
+        <TransactionEditor
+          transaction={editing}
+          accounts={accounts}
+          categories={categories}
+          onClose={() => setEditing(null)}
+          onSaved={load}
+        />
+      )}
     </div>
   )
 }

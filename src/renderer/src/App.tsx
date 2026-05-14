@@ -17,7 +17,9 @@ import KanbanPage from './pages/KanbanPage'
 import FinancesPage from './pages/FinancesPage'
 import GanttPage from './pages/GanttPage'
 import CommandPalette from './components/CommandPalette'
+import ConfirmModalRoot from './components/ConfirmModalRoot'
 import { useNavStore } from './lib/navStore'
+import { notify } from './lib/confirm'
 
 export default function App(): JSX.Element {
   const tab = useNavStore((s) => s.tab)
@@ -112,10 +114,10 @@ export default function App(): JSX.Element {
     try {
       const r = await action()
       if (r.ok) {
-        alert(successMsg(r.path))
+        await notify(successMsg(r.path))
         if (reload) window.location.reload()
       } else if (r.error) {
-        alert(`Error: ${r.error}`)
+        await notify(`Error: ${r.error}`)
       }
     } finally {
       setBusy(false)
@@ -263,6 +265,7 @@ export default function App(): JSX.Element {
         🌸
       </footer>
       {paletteOpen && <CommandPalette onClose={() => setPaletteOpen(false)} />}
+      <ConfirmModalRoot />
     </div>
   )
 }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { PlusIcon, Trash2Icon } from 'lucide-react'
 import { useAsync } from '../../hooks/useAsync'
 import type { Category, TxType } from '../../../../shared/types'
+import { confirm, notify } from '../../lib/confirm'
 
 const PALETTE = ['#fca5a5', '#fcd5b5', '#fde68a', '#bbf7d0', '#a5f3fc', '#93c5fd', '#c4b5fd', '#f9a8d4']
 
@@ -18,12 +19,13 @@ export default function CategoriesView(): JSX.Element {
       setName('')
       q.reload()
     } catch (e) {
-      alert('Ya existe una categoría con ese nombre y tipo')
+      await notify('Ya existe una categoría con ese nombre y tipo')
     }
   }
 
   async function handleRemove(c: Category): Promise<void> {
-    if (!confirm(`Borrar categoría "${c.name}"?`)) return
+    if (!(await confirm({ message: `Borrar la categoría "${c.name}"?`, confirmText: 'Borrar' })))
+      return
     await window.api.categories.remove(c.id)
     q.reload()
   }

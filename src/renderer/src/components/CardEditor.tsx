@@ -3,6 +3,7 @@ import { XIcon, PlusIcon } from 'lucide-react'
 import dayjs from 'dayjs'
 import type { Card, CardWithTags, Tag } from '../../../shared/types'
 import Modal from './Modal'
+import { notify } from '../lib/confirm'
 
 interface Props {
   card: CardWithTags
@@ -43,7 +44,7 @@ export default function CardEditor({ card, onClose }: Props): JSX.Element {
 
   async function handleSave(): Promise<void> {
     if (startDate && dueDate && dayjs(dueDate).isBefore(dayjs(startDate))) {
-      alert('La fecha de fin no puede ser anterior a la de inicio')
+      await notify('La fecha de fin no puede ser anterior a la de inicio')
       return
     }
     try {
@@ -58,7 +59,7 @@ export default function CardEditor({ card, onClose }: Props): JSX.Element {
       await window.api.cards.setTags(card.id, [...selected])
       onClose()
     } catch (e) {
-      alert((e as Error).message)
+      await notify((e as Error).message)
     }
   }
 

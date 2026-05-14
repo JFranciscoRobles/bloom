@@ -6,6 +6,7 @@ import { GripVerticalIcon, PlusIcon, Trash2Icon, PencilIcon } from 'lucide-react
 import type { CardWithTags, Column } from '../../../shared/types'
 import CardItem from './CardItem'
 import PromptModal from './PromptModal'
+import { confirm } from '../lib/confirm'
 
 interface Props {
   column: Column
@@ -31,7 +32,13 @@ export default function KanbanColumn({ column, cards, onChange }: Props): JSX.El
   }
 
   async function handleRemove(): Promise<void> {
-    if (!confirm(`Borrar columna "${column.name}" y sus tarjetas?`)) return
+    if (
+      !(await confirm({
+        message: `Borrar la columna "${column.name}" y todas sus tarjetas?`,
+        confirmText: 'Borrar'
+      }))
+    )
+      return
     await window.api.columns.remove(column.id)
     onChange()
   }
