@@ -22,8 +22,11 @@ export default function KanbanColumn({ column, cards, onChange }: Props): JSX.El
   const sortable = useSortable({ id: `col-${column.id}` })
   const style = {
     transform: CSS.Transform.toString(sortable.transform),
-    transition: sortable.transition
+    transition: sortable.transition,
+    opacity: sortable.isDragging ? 0.35 : 1
   }
+  // When something is hovering this column as a sortable target, lift it slightly.
+  const isOver = sortable.isOver && !sortable.isDragging
 
   async function handleRename(name: string): Promise<void> {
     if (name === column.name) return
@@ -60,22 +63,36 @@ export default function KanbanColumn({ column, cards, onChange }: Props): JSX.El
     <div
       ref={sortable.setNodeRef}
       style={style}
-      className="w-72 flex-shrink-0 bg-white/80 backdrop-blur border border-pastel-purple/30 rounded-2xl flex flex-col max-h-full shadow-sm"
+      className={`w-72 flex-shrink-0 bg-white/80 backdrop-blur rounded-2xl flex flex-col max-h-full shadow-sm transition-shadow ${
+        isOver
+          ? 'border-2 border-pastel-purple shadow-md'
+          : 'border border-pastel-purple/30'
+      }`}
     >
-      <div className="flex items-center gap-1 p-2 border-b border-pastel-purple/30 bg-gradient-to-r from-pastel-pink/15 via-pastel-purple/15 to-pastel-blue/15 rounded-t-2xl">
-        <button
-          {...sortable.attributes}
-          {...sortable.listeners}
-          className="p-1 hover:bg-pastel-purple/20 rounded cursor-grab active:cursor-grabbing"
-        >
-          <GripVerticalIcon size={16} className="text-ink-400" />
-        </button>
+      {/* The entire header is the drag handle, so users can grab anywhere
+          along its width. Action buttons stop propagation so they keep working. */}
+      <div
+        {...sortable.attributes}
+        {...sortable.listeners}
+        className="flex items-center gap-1 p-2 border-b border-pastel-purple/30 bg-gradient-to-r from-pastel-pink/15 via-pastel-purple/15 to-pastel-blue/15 rounded-t-2xl cursor-grab active:cursor-grabbing select-none touch-none"
+      >
+        <GripVerticalIcon size={16} className="text-ink-400 flex-shrink-0" />
         <span className="font-medium flex-1 truncate">{column.name}</span>
-        <span className="text-xs text-ink-400">{cards.length}</span>
-        <button onClick={() => setRenaming(true)} className="p-1 hover:bg-pastel-purple/20 rounded" title="Renombrar">
+        <span className="text-xs text-ink-400 mr-1">{cards.length}</span>
+        <button
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => setRenaming(true)}
+          className="p-1 hover:bg-pastel-purple/20 rounded"
+          title="Renombrar"
+        >
           <PencilIcon size={14} />
         </button>
-        <button onClick={handleRemove} className="p-1 hover:bg-pastel-pink/40 rounded" title="Borrar">
+        <button
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={handleRemove}
+          className="p-1 hover:bg-pastel-pink/40 rounded"
+          title="Borrar"
+        >
           <Trash2Icon size={14} />
         </button>
       </div>
