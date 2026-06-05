@@ -1,9 +1,11 @@
 import { ipcMain } from 'electron'
 import {
   accountsRepo,
+  attachmentsRepo,
   boardsRepo,
   cardsRepo,
   categoriesRepo,
+  checklistRepo,
   columnsRepo,
   inboxRepo,
   ratesRepo,
@@ -12,6 +14,7 @@ import {
   transactionsRepo
 } from './db/repos'
 import { backupDb, exportExcel, importDb, importExcel } from './exports'
+import { attachmentUrl, openAttachment, pickAndIngest, removeAttachment } from './attachments'
 
 export function registerIpcHandlers(): void {
   ipcMain.handle('boards:list', () => boardsRepo.list())
@@ -83,6 +86,28 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('inbox:capture', (_, title: string, description: string | null) =>
     inboxRepo.capture(title, description)
   )
+
+  ipcMain.handle('checklist:listByCard', (_, cardId: number) => checklistRepo.listByCard(cardId))
+  ipcMain.handle('checklist:add', (_, cardId: number, text: string) =>
+    checklistRepo.add(cardId, text)
+  )
+  ipcMain.handle('checklist:toggle', (_, id: number, done: boolean) =>
+    checklistRepo.toggle(id, done)
+  )
+  ipcMain.handle('checklist:rename', (_, id: number, text: string) =>
+    checklistRepo.rename(id, text)
+  )
+  ipcMain.handle('checklist:remove', (_, id: number) => checklistRepo.remove(id))
+
+  ipcMain.handle('attachments:listByCard', (_, cardId: number) =>
+    attachmentsRepo.listByCard(cardId)
+  )
+  ipcMain.handle('attachments:pick', (_, cardId: number) => pickAndIngest(cardId))
+  ipcMain.handle('attachments:remove', (_, id: number) => removeAttachment(id))
+  ipcMain.handle('attachments:open', (_, id: number, mode: 'open' | 'reveal' = 'open') =>
+    openAttachment(id, mode)
+  )
+  ipcMain.handle('attachments:url', (_, relPath: string) => attachmentUrl(relPath))
 
   ipcMain.handle('exports:backupDb', () => backupDb())
   ipcMain.handle('exports:excel', () => exportExcel())

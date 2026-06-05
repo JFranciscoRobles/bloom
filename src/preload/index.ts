@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, clipboard } from 'electron'
 import type { DashboardAPI } from '../shared/api'
 
+
 const invoke = <T>(channel: string, ...args: unknown[]) => ipcRenderer.invoke(channel, ...args) as Promise<T>
 
 const api: DashboardAPI = {
@@ -74,6 +75,20 @@ const api: DashboardAPI = {
   },
   inbox: {
     capture: (title, description) => invoke('inbox:capture', title, description ?? null)
+  },
+  attachments: {
+    listByCard: (cardId) => invoke('attachments:listByCard', cardId),
+    pick: (cardId) => invoke('attachments:pick', cardId),
+    remove: (id) => invoke('attachments:remove', id),
+    open: (id, mode) => invoke('attachments:open', id, mode ?? 'open'),
+    url: (relPath) => invoke('attachments:url', relPath)
+  },
+  checklist: {
+    listByCard: (cardId) => invoke('checklist:listByCard', cardId),
+    add: (cardId, text) => invoke('checklist:add', cardId, text),
+    toggle: (id, done) => invoke('checklist:toggle', id, done),
+    rename: (id, text) => invoke('checklist:rename', id, text),
+    remove: (id) => invoke('checklist:remove', id)
   },
   menu: {
     onAction: (cb) => {

@@ -1,9 +1,11 @@
 import type {
   Account,
+  Attachment,
   Board,
   Card,
   CardWithTags,
   Category,
+  ChecklistItem,
   Column,
   ExchangeRate,
   GanttCard,
@@ -35,7 +37,18 @@ export interface DashboardAPI {
     update: (
       id: number,
       patch: Partial<
-        Pick<Card, 'title' | 'description' | 'start_date' | 'due_date' | 'progress' | 'depends_on'>
+        Pick<
+          Card,
+          | 'title'
+          | 'description'
+          | 'start_date'
+          | 'due_date'
+          | 'progress'
+          | 'depends_on'
+          | 'cover_attachment_id'
+          | 'kind'
+          | 'banner_color'
+        >
       >
     ) => Promise<void>
     remove: (id: number) => Promise<void>
@@ -90,6 +103,20 @@ export interface DashboardAPI {
   }
   inbox: {
     capture: (title: string, description?: string | null) => Promise<Card>
+  }
+  attachments: {
+    listByCard: (cardId: number) => Promise<Attachment[]>
+    pick: (cardId: number) => Promise<Attachment[]>
+    remove: (id: number) => Promise<boolean>
+    open: (id: number, mode?: 'open' | 'reveal') => Promise<boolean>
+    url: (relPath: string) => Promise<string>
+  }
+  checklist: {
+    listByCard: (cardId: number) => Promise<ChecklistItem[]>
+    add: (cardId: number, text: string) => Promise<ChecklistItem>
+    toggle: (id: number, done: boolean) => Promise<void>
+    rename: (id: number, text: string) => Promise<void>
+    remove: (id: number) => Promise<void>
   }
   menu: {
     /** Subscribe to native-menu actions. Returns an unsubscribe fn. */

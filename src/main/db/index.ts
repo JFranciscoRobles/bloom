@@ -28,6 +28,24 @@ function runMigrations(conn: Database.Database): void {
   ensureColumn(conn, 'cards', 'depends_on', 'depends_on INTEGER REFERENCES cards(id) ON DELETE SET NULL')
   conn.exec('CREATE INDEX IF NOT EXISTS idx_cards_depends_on ON cards(depends_on)')
   ensureColumn(conn, 'boards', 'theme', "theme TEXT NOT NULL DEFAULT 'rose'")
+  // Cover attachment: id of the attachment used as cover, or null.
+  // ON DELETE SET NULL is enforced at the application layer (SQLite doesn't
+  // allow adding a column with a FK constraint via ALTER TABLE).
+  ensureColumn(conn, 'cards', 'cover_attachment_id', 'cover_attachment_id INTEGER')
+  ensureColumn(conn, 'cards', 'kind', "kind TEXT NOT NULL DEFAULT 'normal'")
+  ensureColumn(conn, 'cards', 'banner_color', 'banner_color TEXT')
+  // Checklist table (created here in case the SCHEMA_SQL is too old to include it).
+  conn.exec(`
+    CREATE TABLE IF NOT EXISTS checklist_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+      text TEXT NOT NULL,
+      done INTEGER NOT NULL DEFAULT 0,
+      position INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_checklist_card ON checklist_items(card_id);
+  `)
 }
 
 export function getDb(): Database.Database {

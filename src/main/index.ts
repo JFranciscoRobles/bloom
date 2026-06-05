@@ -8,6 +8,10 @@ import { createTray, destroyTray } from './tray'
 import { showQuickCapture, registerQuickCaptureIpc } from './quickCapture'
 import { startNotifications, stopNotifications } from './notifications'
 import { buildAppMenu } from './menu'
+import { registerPrivilegedScheme, registerProtocol } from './attachments'
+
+// Custom protocols must be registered as privileged before the app is ready.
+registerPrivilegedScheme()
 
 let mainWindow: BrowserWindow | null = null
 let isQuiting = false
@@ -77,6 +81,7 @@ app.whenReady().then(() => {
   })
 
   getDb()
+  registerProtocol()
   registerIpcHandlers()
   registerQuickCaptureIpc()
   createWindow()

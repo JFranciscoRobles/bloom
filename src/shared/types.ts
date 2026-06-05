@@ -13,6 +13,8 @@ export interface Column {
   position: number
 }
 
+export type CardKind = 'normal' | 'banner'
+
 export interface Card {
   id: number
   column_id: number
@@ -22,7 +24,30 @@ export interface Card {
   due_date: string | null
   progress: number
   depends_on: number | null
+  cover_attachment_id: number | null
+  kind: CardKind
+  banner_color: string | null
   position: number
+  created_at: string
+}
+
+export interface ChecklistItem {
+  id: number
+  card_id: number
+  text: string
+  done: number // 0 | 1
+  position: number
+  created_at: string
+}
+
+export interface Attachment {
+  id: number
+  card_id: number
+  /** Relative path inside `userData/attachments/` */
+  path: string
+  filename: string
+  mime_type: string | null
+  size_bytes: number | null
   created_at: string
 }
 
@@ -42,6 +67,13 @@ export interface Tag {
 
 export interface CardWithTags extends Card {
   tags: Tag[]
+  /** Eager-loaded cover when available (so cards can render thumbnails without an extra IPC). */
+  cover?: Attachment | null
+  /** Eager-loaded counts so the card preview can show "3/5". */
+  checklist_total?: number
+  checklist_done?: number
+  /** First few checklist items for in-card preview (pending first, then done). */
+  checklist_preview?: ChecklistItem[]
 }
 
 export type TxType = 'income' | 'expense'

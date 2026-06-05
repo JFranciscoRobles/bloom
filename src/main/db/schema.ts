@@ -27,6 +27,10 @@ CREATE TABLE IF NOT EXISTS cards (
   due_date TEXT,
   progress INTEGER NOT NULL DEFAULT 0,
   depends_on INTEGER REFERENCES cards(id) ON DELETE SET NULL,
+  cover_attachment_id INTEGER,
+  /* 'normal' | 'banner' — banner is a colored section divider inside a column */
+  kind TEXT NOT NULL DEFAULT 'normal',
+  banner_color TEXT,
   position INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -80,6 +84,30 @@ CREATE TABLE IF NOT EXISTS exchange_rates (
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (from_currency, to_currency)
 );
+
+CREATE TABLE IF NOT EXISTS checklist_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  done INTEGER NOT NULL DEFAULT 0,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_checklist_card ON checklist_items(card_id);
+
+CREATE TABLE IF NOT EXISTS attachments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  card_id INTEGER NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  /* Relative path under userData/attachments, e.g. 'a3f2.png' */
+  path TEXT NOT NULL,
+  /* Original filename shown in the UI */
+  filename TEXT NOT NULL,
+  /* Mime type for previews */
+  mime_type TEXT,
+  size_bytes INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_attachments_card ON attachments(card_id);
 `
 
 export const SEED_SQL = `

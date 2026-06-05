@@ -1,10 +1,13 @@
 import { getDb } from './index'
 import type {
   Account,
+  Attachment,
   Board,
   Card,
+  CardKind,
   CardWithTags,
   Category,
+  ChecklistItem,
   Column,
   ExchangeRate,
   GanttCard,
@@ -107,7 +110,7 @@ export const cardsRepo = {
       .all(columnId) as Card[]
     if (cards.length === 0) return []
     const placeholders = cards.map(() => '?').join(',')
-    const rows = db
+    const tagRows = db
       .prepare(
         `SELECT ct.card_id, t.id, t.name, t.color
          FROM card_tags ct JOIN tags t ON t.id = ct.tag_id
@@ -115,12 +118,65 @@ export const cardsRepo = {
       )
       .all(...cards.map((c) => c.id)) as Array<Tag & { card_id: number }>
     const byCard = new Map<number, Tag[]>()
-    for (const r of rows) {
+    for (const r of tagRows) {
       const list = byCard.get(r.card_id) ?? []
       list.push({ id: r.id, name: r.name, color: r.color })
       byCard.set(r.card_id, list)
     }
-    return cards.map((c) => ({ ...c, tags: byCard.get(c.id) ?? [] }))
+    // Eager-load cover attachments so cards can render thumbnails immediately.
+    const coverIds = cards
+      .map((c) => c.cover_attachment_id)
+      .filter((id): id is number => id != null)
+    const covers = new Map<number, Attachment>()
+    if (coverIds.length > 0) {
+      const cph = coverIds.map(() => '?').join(',')
+      const rows = db
+        .prepare(`SELECT * FROM attachments WHERE id IN (${cph})`)
+        .all(...coverIds) as Attachment[]
+      for (const a of rows) covers.set(a.id, a)
+    }
+    // Eager-load checklist counts so the card preview can show "3/5".
+    const checklistCounts = new Map<number, { total: number; done: number }>()
+    const countRows = db
+      .prepare(
+        `SELECT card_id, COUNT(*) AS total, SUM(done) AS done
+         FROM checklist_items
+         WHERE card_id IN (${placeholders})
+         GROUP BY card_id`
+      )
+      .all(...cards.map((c) => c.id)) as Array<{ card_id: number; total: number; done: number }>
+    for (const r of countRows) {
+      checklistCounts.set(r.card_id, { total: r.total, done: r.done ?? 0 })
+    }
+    // Eager-load the first checklist items so the card can render a quick preview.
+    // We fetch everything in one query and pick the first 3 per card on the JS
+    // side, sorting pending-first so the preview is actionable.
+    const previewByCard = new Map<number, ChecklistItem[]>()
+    const itemRows = db
+      .prepare(
+        `SELECT * FROM checklist_items
+         WHERE card_id IN (${placeholders})
+         ORDER BY card_id, done ASC, position ASC, id ASC`
+      )
+      .all(...cards.map((c) => c.id)) as ChecklistItem[]
+    for (const item of itemRows) {
+      const list = previewByCard.get(item.card_id) ?? []
+      if (list.length < 3) {
+        list.push(item)
+        previewByCard.set(item.card_id, list)
+      }
+    }
+    return cards.map((c) => {
+      const counts = checklistCounts.get(c.id)
+      return {
+        ...c,
+        tags: byCard.get(c.id) ?? [],
+        cover: c.cover_attachment_id ? covers.get(c.cover_attachment_id) ?? null : null,
+        checklist_total: counts?.total ?? 0,
+        checklist_done: counts?.done ?? 0,
+        checklist_preview: previewByCard.get(c.id) ?? []
+      }
+    })
   },
   create(columnId: number, title: string): Card {
     const db = getDb()
@@ -137,7 +193,18 @@ export const cardsRepo = {
   update(
     id: number,
     patch: Partial<
-      Pick<Card, 'title' | 'description' | 'start_date' | 'due_date' | 'progress' | 'depends_on'>
+      Pick<
+        Card,
+        | 'title'
+        | 'description'
+        | 'start_date'
+        | 'due_date'
+        | 'progress'
+        | 'depends_on'
+        | 'cover_attachment_id'
+        | 'kind'
+        | 'banner_color'
+      >
     >
   ): void {
     const fields: string[] = []
@@ -168,6 +235,18 @@ export const cardsRepo = {
       }
       fields.push('depends_on = ?')
       values.push(patch.depends_on)
+    }
+    if (patch.cover_attachment_id !== undefined) {
+      fields.push('cover_attachment_id = ?')
+      values.push(patch.cover_attachment_id)
+    }
+    if (patch.kind !== undefined) {
+      fields.push('kind = ?')
+      values.push(patch.kind)
+    }
+    if (patch.banner_color !== undefined) {
+      fields.push('banner_color = ?')
+      values.push(patch.banner_color)
     }
     if (fields.length === 0) return
     values.push(id)
@@ -235,6 +314,107 @@ export const cardsRepo = {
       .get(cardId) as { board_id: number } | undefined
     if (!row) return []
     return cardsRepo.listForBoard(row.board_id)
+  }
+}
+
+function recalcProgressFromChecklist(cardId: number): void {
+  const db = getDb()
+  const counts = db
+    .prepare(
+      'SELECT COUNT(*) AS total, COALESCE(SUM(done), 0) AS done FROM checklist_items WHERE card_id = ?'
+    )
+    .get(cardId) as { total: number; done: number }
+  if (counts.total === 0) return
+  const pct = Math.round((counts.done / counts.total) * 100)
+  db.prepare('UPDATE cards SET progress = ? WHERE id = ?').run(pct, cardId)
+}
+
+export const checklistRepo = {
+  listByCard(cardId: number): ChecklistItem[] {
+    return getDb()
+      .prepare(
+        'SELECT * FROM checklist_items WHERE card_id = ? ORDER BY position ASC, id ASC'
+      )
+      .all(cardId) as ChecklistItem[]
+  },
+  add(cardId: number, text: string): ChecklistItem {
+    const db = getDb()
+    const max = (
+      db
+        .prepare(
+          'SELECT COALESCE(MAX(position), -1) AS m FROM checklist_items WHERE card_id = ?'
+        )
+        .get(cardId) as { m: number }
+    ).m
+    const info = db
+      .prepare('INSERT INTO checklist_items (card_id, text, position) VALUES (?, ?, ?)')
+      .run(cardId, text, max + 1)
+    recalcProgressFromChecklist(cardId)
+    return db
+      .prepare('SELECT * FROM checklist_items WHERE id = ?')
+      .get(info.lastInsertRowid) as ChecklistItem
+  },
+  toggle(id: number, done: boolean): void {
+    const db = getDb()
+    const row = db
+      .prepare('SELECT card_id FROM checklist_items WHERE id = ?')
+      .get(id) as { card_id: number } | undefined
+    if (!row) return
+    db.prepare('UPDATE checklist_items SET done = ? WHERE id = ?').run(done ? 1 : 0, id)
+    recalcProgressFromChecklist(row.card_id)
+  },
+  rename(id: number, text: string): void {
+    getDb().prepare('UPDATE checklist_items SET text = ? WHERE id = ?').run(text, id)
+  },
+  remove(id: number): void {
+    const db = getDb()
+    const row = db
+      .prepare('SELECT card_id FROM checklist_items WHERE id = ?')
+      .get(id) as { card_id: number } | undefined
+    if (!row) return
+    db.prepare('DELETE FROM checklist_items WHERE id = ?').run(id)
+    recalcProgressFromChecklist(row.card_id)
+  }
+}
+
+export const attachmentsRepo = {
+  listByCard(cardId: number): Attachment[] {
+    return getDb()
+      .prepare('SELECT * FROM attachments WHERE card_id = ? ORDER BY created_at DESC, id DESC')
+      .all(cardId) as Attachment[]
+  },
+  create(args: {
+    cardId: number
+    path: string
+    filename: string
+    mimeType: string | null
+    sizeBytes: number | null
+  }): Attachment {
+    const db = getDb()
+    const info = db
+      .prepare(
+        `INSERT INTO attachments (card_id, path, filename, mime_type, size_bytes)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(args.cardId, args.path, args.filename, args.mimeType, args.sizeBytes)
+    return db.prepare('SELECT * FROM attachments WHERE id = ?').get(info.lastInsertRowid) as Attachment
+  },
+  get(id: number): Attachment | undefined {
+    return getDb().prepare('SELECT * FROM attachments WHERE id = ?').get(id) as
+      | Attachment
+      | undefined
+  },
+  /** Returns the deleted row so the main process can also unlink the file. */
+  remove(id: number): Attachment | null {
+    const db = getDb()
+    const row = db.prepare('SELECT * FROM attachments WHERE id = ?').get(id) as
+      | Attachment
+      | undefined
+    if (!row) return null
+    // Clear cover pointers that reference this attachment first.
+    db.prepare('UPDATE cards SET cover_attachment_id = NULL WHERE cover_attachment_id = ?').run(id)
+    db.prepare('DELETE FROM attachments WHERE id = ?').run(id)
+    return row
   }
 }
 

@@ -36,6 +36,49 @@ body {
 .scrollbar-thin::-webkit-scrollbar-thumb { @apply bg-pastel-purple/50 rounded; }
 .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
 
+/*
+ * Bigger, higher-contrast scrollbar for the Kanban board's horizontal axis.
+ * The default 8px bar is too easy to lose against the pastel gradient, so the
+ * Kanban container uses this stronger variant.
+ */
+.scrollbar-kanban::-webkit-scrollbar {
+  height: 22px;
+  width: 22px;
+}
+.scrollbar-kanban::-webkit-scrollbar-track {
+  background: rgb(var(--theme-accent-rgb) / 0.18);
+  border-radius: 999px;
+  margin: 0 16px;
+  border: 1px solid rgb(var(--theme-accent-rgb) / 0.3);
+}
+/*
+ * Theme-independent colors: dark slate-violet idle, brighter violet on hover,
+ * deepest violet while dragging. Stays legible on any of the 10 pastel themes
+ * because the background gradient is always light.
+ */
+.scrollbar-kanban::-webkit-scrollbar-thumb {
+  background: #6d5b9a;
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  min-width: 90px;
+  min-height: 90px;
+  box-shadow: inset 0 0 0 1px rgba(45, 30, 75, 0.25);
+}
+.scrollbar-kanban::-webkit-scrollbar-thumb:hover {
+  background: #8b5cf6;
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+.scrollbar-kanban::-webkit-scrollbar-thumb:active {
+  background: #4c2f8a;
+  background-clip: padding-box;
+}
+/* Tiny arrows on the ends help users with smaller motor precision. */
+.scrollbar-kanban::-webkit-scrollbar-button {
+  display: none;
+}
+
 @layer components {
   .btn {
     @apply inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium
@@ -57,3 +100,103 @@ body {
     @apply rounded-2xl bg-white/80 backdrop-blur border border-pastel-purple/30 p-3 shadow-sm;
   }
 }
+
+/*
+ * Rich-text content styles. Shared between the TipTap editor and the
+ * read-only renderer used in card previews. Tailwind's `prose` plugin would
+ * be overkill for our scope; this is a tight, pastel-themed alternative.
+ */
+.prose-bloom {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: #4b3a6e;
+}
+.prose-bloom p { margin: 0 0 0.5em; }
+.prose-bloom p:last-child { margin-bottom: 0; }
+.prose-bloom h1, .prose-bloom h2, .prose-bloom h3 {
+  font-weight: 600;
+  color: #3d2e5c;
+  margin: 0.75em 0 0.35em;
+  line-height: 1.25;
+}
+.prose-bloom h1 { font-size: 1.35rem; }
+.prose-bloom h2 { font-size: 1.15rem; }
+.prose-bloom h3 { font-size: 1rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.prose-bloom strong { color: #3d2e5c; font-weight: 600; }
+.prose-bloom em { font-style: italic; }
+.prose-bloom s { color: #9d8fbf; }
+.prose-bloom ul, .prose-bloom ol {
+  margin: 0.4em 0 0.6em;
+  padding-left: 1.4em;
+}
+.prose-bloom ul { list-style: disc; }
+.prose-bloom ol { list-style: decimal; }
+.prose-bloom li { margin: 0.1em 0; }
+.prose-bloom li > p { margin: 0; }
+.prose-bloom blockquote {
+  border-left: 3px solid rgb(var(--theme-accent-rgb));
+  padding: 0.2em 0.75em;
+  margin: 0.5em 0;
+  color: #5b4a82;
+  background: rgb(var(--theme-soft-rgb) / 0.3);
+  border-radius: 0.5rem;
+}
+.prose-bloom code {
+  background: rgb(var(--theme-accent-rgb) / 0.18);
+  color: #3d2e5c;
+  padding: 0.1em 0.35em;
+  border-radius: 0.35rem;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.prose-bloom pre {
+  background: #f5f0fc;
+  color: #3d2e5c;
+  padding: 0.75em 1em;
+  border-radius: 0.6rem;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+.prose-bloom pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.85em;
+}
+.prose-bloom a {
+  color: rgb(var(--theme-accent-rgb));
+  text-decoration: underline;
+}
+.prose-bloom a:hover { color: #3d2e5c; }
+.prose-bloom hr {
+  border: 0;
+  border-top: 1px dashed rgb(var(--theme-accent-rgb) / 0.5);
+  margin: 0.8em 0;
+}
+/* Placeholder for empty TipTap (uses data attribute it sets on empty nodes). */
+.prose-bloom p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #9d8fbf;
+  pointer-events: none;
+  height: 0;
+}
+
+/* Compact variant for card previews where we want to cap height. */
+.prose-bloom-preview {
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: #7a6aa0;
+}
+.prose-bloom-preview p,
+.prose-bloom-preview h1,
+.prose-bloom-preview h2,
+.prose-bloom-preview h3,
+.prose-bloom-preview ul,
+.prose-bloom-preview ol,
+.prose-bloom-preview blockquote,
+.prose-bloom-preview pre {
+  margin: 0.15em 0;
+}
+.prose-bloom-preview h1 { font-size: 0.85rem; }
+.prose-bloom-preview h2,
+.prose-bloom-preview h3 { font-size: 0.8rem; text-transform: none; letter-spacing: 0; }

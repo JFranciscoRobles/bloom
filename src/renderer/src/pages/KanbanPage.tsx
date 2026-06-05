@@ -258,7 +258,7 @@ function BoardView({ boardId }: { boardId: number }): JSX.Element {
   }
 
   return (
-    <div className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin">
+    <div className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-kanban">
       <DndContext
         sensors={sensors}
         collisionDetection={collisionDetection}
